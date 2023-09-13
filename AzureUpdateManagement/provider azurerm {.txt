@@ -1,0 +1,62 @@
+provider "azurerm" {
+  features {}
+}
+
+resource "azurerm_automation_account" "example" {
+  name                = "myautomationaccount"
+  location            = "East US"
+  resource_group_name = azurerm_resource_group.example.name
+}
+
+resource "azurerm_resource_group" "example" {
+  name     = "myresourcegroup"
+  location = "East US"
+}
+
+resource "azurerm_automation_runbook" "update_deployment" {
+  name                = "UpdateDeploymentRunbook"
+  resource_group_name = azurerm_resource_group.example.name
+  automation_account_name = azurerm_automation_account.example.name
+  log_verbose = "Yes"
+  log_progress = "Yes"
+  
+  runbook_type = "PowerShell"
+  draft        = file("update_deployment.ps1") # Content of the update deployment PowerShell script
+}
+
+resource "azurerm_automation_schedule" "monthly_schedule" {
+  name                = "MonthlySchedule"
+  resource_group_name = azurerm_resource_group.example.name
+  automation_account_name = azurerm_automation_account.example.name
+  description         = "Monthly update deployment schedule"
+  frequency           = "Month"
+  interval            = 1
+  time_zone           = "UTC"
+  start_time          = "2023-09-01T22:00:00Z" # Adjust the date and time
+}
+
+resource "azurerm_automation_schedule_dependency" "monthly_dependency" {
+  schedule_name       = azurerm_automation_schedule.monthly_schedule.name
+  runbook_name        = azurerm_automation_runbook.update_deployment.name
+}
+
+# Contents of the update_deployment.ps1 file
+locals {
+  update_deployment_script = <<SCRIPT
+$patchConfig = New-AzPatchConfiguration -Name "MonthlyUpdates" -ResourceGroupName "myresourcegroup" -Windows
+
+# Include specific updates (replace with your update IDs)
+$includedUpdates = @("KB123456", "KB789012")
+$patchConfig.Include = $includedUpdates
+
+# Exclude specific updates (replace with your update IDs)
+$excludedUpdates = @("KB345678")
+$patchConfig.Exclude = $excludedUpdates
+
+Start-AzPatchComplianceScan -ConfigurationName "MonthlyUpdates" -ResourceGroupName "myresourcegroup"
+SCRIPT
+}
+
+output "update_deployment_script" {
+  value = local.update_deployment_script
+}
